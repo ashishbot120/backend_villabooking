@@ -24,10 +24,12 @@ export const generateTokenAndSetCookie = (res: Response, userId: string) => {
 
     const cookieOptions = {
         httpOnly: true,
-        secure: isProd, // false in development (http)
-        sameSite: isProd ? ("none" as const) : ("lax" as const),
+        // ✅ CRITICAL FIX: Secure must be true on Vercel (HTTPS)
+        secure: isProd, 
+        // ✅ CRITICAL FIX: 'None' allows cookies to survive the rewrite proxy
+        sameSite: isProd ? ("none" as const) : ("lax" as const), 
         path: "/",
-        domain: isProd ? "your-production-domain.com" : undefined, // ✅ Use undefined for localhost
+        // ❌ REMOVED DOMAIN: Letting the browser infer the domain is much safer on Vercel
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     };
 
@@ -45,12 +47,12 @@ export const generateTokenAndSetCookie = (res: Response, userId: string) => {
 export const logout = (res: Response) => {
     const isProd = process.env.NODE_ENV === "production";
     
+    // ✅ FIX: Logout cookie options must match login options to successfully delete it
     res.clearCookie("token", {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? ("none" as const) : ("lax" as const),
         path: "/",
-        domain: isProd ? "your-production-domain.com" : undefined,
     });
 };
 
@@ -154,18 +156,20 @@ export const login = async (req: Request, res: Response) => {
 export const googleSignIn = async (req: Request, res: Response) => {
     try {
         const code = req.body.token;
+        const redirectUri = req.body.redirectUri; // ✅ Get redirectUri from frontend if available
 
         if (!code) {
             return res.status(400).json({ msg: 'Authorization code not provided.' });
         }
 
+        // ✅ Use dynamic redirect URI logic
         const oAuth2Client = new OAuth2Client(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.NODE_ENV === 'production' 
-    ? 'https://frontend-villabooking.vercel.app/auth/google/callback' 
-    : 'http://localhost:3000/auth/google/callback'
-);
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            redirectUri || (process.env.NODE_ENV === 'production' 
+                ? 'https://frontend-villabooking.vercel.app/auth/google/callback' 
+                : 'http://localhost:3000/auth/google/callback')
+        );
 
         const { tokens } = await oAuth2Client.getToken({ code });
 
