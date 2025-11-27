@@ -160,11 +160,12 @@ export const googleSignIn = async (req: Request, res: Response) => {
         }
 
         const oAuth2Client = new OAuth2Client(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-            // This URI must exactly match what's in your Google Cloud Console
-            'http://localhost:3000/auth/google/callback'
-        );
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.NODE_ENV === 'production' 
+    ? 'https://frontend-villabooking.vercel.app/auth/google/callback' 
+    : 'http://localhost:3000/auth/google/callback'
+);
 
         const { tokens } = await oAuth2Client.getToken({ code });
 
