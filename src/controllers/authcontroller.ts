@@ -4,11 +4,9 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import { AuthRequest } from '../middleware/authmiddleware';
-import Booking from '../models/booking'; // Needed for checkout
-import Villa from '../models/villa'; // Needed for checkout
+import Booking from '../models/booking'; 
+import Villa from '../models/villa'; 
 
-// This interface helps TypeScript understand that when we fetch a user for local login,
-// the password field will be present.
 type UserWithPassword = IUser & { password: string };
 
 /**
@@ -24,13 +22,13 @@ export const generateTokenAndSetCookie = (res: Response, userId: string) => {
 
     const cookieOptions = {
         httpOnly: true,
-        // ✅ CRITICAL FIX: Secure must be true on Vercel (HTTPS)
+        // ✅ Secure must be true on Vercel
         secure: isProd, 
-        // ✅ CRITICAL FIX: 'None' allows cookies to survive the rewrite proxy
+        // ✅ SameSite 'none' is required for cross-site/proxy cookies
         sameSite: isProd ? ("none" as const) : ("lax" as const), 
         path: "/",
-        // ❌ REMOVED DOMAIN: Letting the browser infer the domain is much safer on Vercel
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        // ❌ REMOVED DOMAIN: Letting the browser infer the domain is safer
+        maxAge: 30 * 24 * 60 * 60 * 1000, 
     };
 
     console.log('Cookie options:', cookieOptions);
@@ -40,20 +38,19 @@ export const generateTokenAndSetCookie = (res: Response, userId: string) => {
     console.log('✅ Cookie set successfully');
     console.log('=== END COOKIE DEBUG ===\n');
 
-    // Store token in res.locals for potential use in response
     (res as any).locals = { ...(res as any).locals, token };
 };
 
 export const logout = (res: Response) => {
     const isProd = process.env.NODE_ENV === "production";
     
-    // ✅ FIX: Logout cookie options must match login options to successfully delete it
     res.clearCookie("token", {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? ("none" as const) : ("lax" as const),
         path: "/",
     });
+    res.status(200).json({ message: "Logged out successfully" });
 };
 
 /**
@@ -63,29 +60,23 @@ export const signup = async (req: Request, res: Response) => {
     try {
         const { name, email, password, phone } = req.body;
 
-        // 1. Check if user already exists
         const userExists = await User.findOne({ email });
         if (userExists) {
             return res.status(400).json({ msg: 'User with this email already exists.' });
         }
 
-        // 2. Hash the password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // 3. Create the new user with the hashed password
         const newUser = new User({
             name,
             email,
-            password: hashedPassword, // Store the hashed password
+            password: hashedPassword, 
             phone,
-            // userType defaults to 'user' based on your User model
         });
 
         if (newUser) {
             await newUser.save();
-
-            // 4. Log the user in immediately by generating a token
             generateTokenAndSetCookie(res, newUser._id.toString());
 
             res.status(201).json({
@@ -114,7 +105,6 @@ export const login = async (req: Request, res: Response) => {
         const user = await User.findOne({ email }).select('+password') as UserWithPassword | null;
 
         if (!user) {
-            console.log(`Login attempt failed: User not found for email ${email}`);
             return res.status(400).json({ msg: 'Invalid credentials. User not found.' });
         }
 
@@ -127,12 +117,9 @@ export const login = async (req: Request, res: Response) => {
 
         const isMatch = await bcrypt.compare(password, user.password);
         
-        // --- For Debugging ---
         if (!isMatch) {
-            console.log(`Login attempt failed: Password mismatch for email ${email}`);
             return res.status(400).json({ msg: 'Invalid credentials. Password does not match.' });
         }
-        // --------------------
 
         generateTokenAndSetCookie(res, user._id.toString());
 
@@ -151,12 +138,13 @@ export const login = async (req: Request, res: Response) => {
 };
 
 /**
- * Controller for Google Sign-In (handles both login and signup).
+ * Controller for Google Sign-In.
  */
 export const googleSignIn = async (req: Request, res: Response) => {
     try {
         const code = req.body.token;
-        const redirectUri = req.body.redirectUri; // ✅ Get redirectUri from frontend if available
+        // ✅ Get redirectUri from frontend if available
+        const redirectUri = req.body.redirectUri; 
 
         if (!code) {
             return res.status(400).json({ msg: 'Authorization code not provided.' });
@@ -178,9 +166,7 @@ export const googleSignIn = async (req: Request, res: Response) => {
         }
 
         const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: {
-                Authorization: `Bearer ${tokens.access_token}`,
-            },
+            headers: { Authorization: `Bearer ${tokens.access_token}` },
         });
 
         if (!response.ok) {
@@ -203,7 +189,7 @@ export const googleSignIn = async (req: Request, res: Response) => {
                 name,
                 email,
                 profilePicture: picture,
-                phone: '000-000-0000', // Placeholder
+                phone: '000-000-0000', 
             });
             await user.save();
         }
@@ -229,7 +215,7 @@ export const googleSignIn = async (req: Request, res: Response) => {
 export const updateUserRole = async (req: AuthRequest, res: Response) => {
     try {
         const { userType } = req.body;
-        const userId = req.user?._id; // Get user ID from the 'protect' middleware
+        const userId = req.user?._id; 
 
         if (!userId) {
             return res.status(401).json({ message: 'Not authorized.' });
@@ -248,7 +234,6 @@ export const updateUserRole = async (req: AuthRequest, res: Response) => {
         user.userType = userType.toLowerCase();
         await user.save();
 
-        // Return the updated user object (without password)
         const updatedUser = {
             id: user._id,
             name: user.name,
@@ -265,7 +250,6 @@ export const updateUserRole = async (req: AuthRequest, res: Response) => {
 };
 
 // --- Cart Controllers ---
-
 export const getCart = async (req: AuthRequest, res: Response) => {
     try {
         const user = await User.findById(req.user!._id).populate({
@@ -279,8 +263,6 @@ export const getCart = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// @desc    Add item to cart
-// @route   POST /api/cart
 export const addToCart = async (req: AuthRequest, res: Response) => {
     try {
         const { villaId, checkIn, checkOut, guests, price } = req.body;
@@ -295,8 +277,6 @@ export const addToCart = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// @desc    Remove item from cart
-// @route   DELETE /api/cart/:itemId
 export const removeFromCart = async (req: AuthRequest, res: Response) => {
     try {
         const { itemId } = req.params;
@@ -311,8 +291,6 @@ export const removeFromCart = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// @desc    Checkout all items in cart and create bookings
-// @route   POST /api/cart/checkout
 export const checkoutCart = async (req: AuthRequest, res: Response) => {
     try {
         const user = await User.findById(req.user!._id);
@@ -320,9 +298,7 @@ export const checkoutCart = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: 'Cart is empty or user not found' });
         }
 
-        // Create bookings and update villa availability for all items
         for (const item of user.cart) {
-            // Create the booking
             const newBooking = new Booking({
                 user: user._id,
                 villa: item.villa,
@@ -333,7 +309,6 @@ export const checkoutCart = async (req: AuthRequest, res: Response) => {
             });
             await newBooking.save();
 
-            // Mark dates as unavailable on the villa
             await Villa.findByIdAndUpdate(item.villa, {
                 $push: {
                     unavailability: { startDate: item.checkIn, endDate: item.checkOut }
@@ -341,7 +316,6 @@ export const checkoutCart = async (req: AuthRequest, res: Response) => {
             });
         }
 
-        // Clear the user's cart
         user.cart = [];
         await user.save();
 
